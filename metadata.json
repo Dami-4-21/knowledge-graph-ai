@@ -1,0 +1,6 @@
+{
+  "name": "Knowledge Graph AI",
+  "description": "An AI-powered personal knowledge management system that extracts concepts, entities, and acronyms, constructs a dynamic knowledge graph, and enables perspective exploration and grounded AI discovery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

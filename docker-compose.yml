@@ -1,0 +1,41 @@
+services:
+  knowledge-graph-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: knowledge-graph-ai:latest
+    container_name: knowledge-graph-ai
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      # Force Node.js fetch (undici) to prefer IPv4.
+      # Docker bridge has no IPv6 routing — undici's default IPv6-first DNS
+      # causes ETIMEDOUT on every outbound TLS connection to external APIs.
+      - NODE_OPTIONS=--dns-result-order=ipv4first
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    dns:
+      - 192.168.1.1   # host router (matches your /etc/resolv.conf)
+      - 1.1.1.1       # Cloudflare fallback
+      - 8.8.8.8       # Google fallback
+    volumes:
+      # Persist any server-side data (logs, etc.)
+      - kg_data:/app/data
+    networks:
+      - kg_network
+
+volumes:
+  kg_data:
+    driver: local
+
+networks:
+  kg_network:
+    driver: bridge
