@@ -23,7 +23,15 @@ export type RelationshipType =
   | 'MENTIONED_IN'
   | 'EXPLAINS'
   | 'CONTRADICTS'
-  | 'EXTENDS';
+  | 'EXTENDS'
+  // Phase 2: hub relationship types for manual item links
+  | 'POINTS_TO'
+  | 'HOSTED_ON'
+  | 'USES_API'
+  | 'BELONGS_TO'
+  | 'TESTING_FOR'
+  | 'LEARNED_FROM'
+  | 'APPLIES_TO';
 
 export interface ExtractedConcept {
   id: string;

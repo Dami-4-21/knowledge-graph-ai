@@ -12,6 +12,7 @@ import { PerspectiveManager } from './components/PerspectiveManager';
 import { SettingsStatsModal } from './components/SettingsStatsModal';
 import { NewNoteModal } from './components/NewNoteModal';
 import { ProfileModal } from './components/ProfileModal';
+import { ConnectItemsModal } from './components/ConnectItemsModal';
 
 export const MainAppContent: React.FC = () => {
   const [viewLayout, setViewLayout] = useState<'split' | 'graph-focus' | 'notes-focus'>('split');
@@ -74,6 +75,7 @@ export const MainAppContent: React.FC = () => {
       <PerspectiveManager />
       <SettingsStatsModal />
       <ProfileModal />
+      <ConnectItemsModal />
       <NewNoteModal
         isOpen={isNewNoteOpen}
         onClose={() => setIsNewNoteOpen(false)}

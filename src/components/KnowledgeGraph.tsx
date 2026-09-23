@@ -85,6 +85,29 @@ export const KnowledgeGraph: React.FC = () => {
       });
     });
 
+    // Phase 2: hub items become first-class graph nodes (keyed by title, like concepts)
+    const ENTITY_TYPES = ['Repo', 'Screenshot', 'Project', 'Client', 'Domain', 'DnsRecord', 'Server', 'Service', 'Vision', 'Learning'];
+    notes.forEach(note => {
+      if (!note.itemType || !ENTITY_TYPES.includes(note.itemType)) return;
+      const key = note.title.toLowerCase().trim();
+      if (!key) return;
+      if (!nodeMap.has(key)) {
+        nodeMap.set(key, {
+          id: key,
+          name: note.title,
+          type: note.itemType,
+          description: (note.content || '').slice(0, 120),
+          importance: 1,
+          sourceCount: 1,
+          sourceNoteIds: [note.id],
+          category: note.lane
+        });
+      } else {
+        const existing = nodeMap.get(key)!;
+        if (!existing.sourceNoteIds.includes(note.id)) existing.sourceNoteIds.push(note.id);
+      }
+    });
+
     // Also collect nodes referenced in relationships that might not be in notes
     relationships.forEach(rel => {
       const srcKey = rel.sourceName.toLowerCase().trim();

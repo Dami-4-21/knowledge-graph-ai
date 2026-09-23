@@ -5,6 +5,7 @@ import {
   NodeType,
   Lane,
   Relationship,
+  RelationshipType,
   Perspective,
   DiscoveryConnection,
   KnowledgeGap,
@@ -58,11 +59,14 @@ interface KnowledgeGraphContextType {
   setIsSettingsOpen: (open: boolean) => void;
   isProfileOpen: boolean;
   setIsProfileOpen: (open: boolean) => void;
+  isConnectOpen: boolean;
+  setIsConnectOpen: (open: boolean) => void;
 
   // Actions
   addNote: (title: string, content: string, collection?: string, tags?: string[], source?: string, itemType?: NodeType, lane?: Lane, sourceUrl?: string) => Promise<Note>;
   extractLearnings: (noteId: string) => Promise<string[]>;
   getProfileInsights: () => Promise<any>;
+  linkItems: (sourceNoteId: string, targetNoteId: string, relationshipType: RelationshipType) => void;
   updateNote: (id: string, title: string, content: string, collection?: string, tags?: string[]) => Promise<void>;
   deleteNote: (id: string) => void;
   reAnalyzeNote: (id: string) => Promise<void>;
@@ -172,6 +176,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
   const [isPerspectiveCompareOpen, setIsPerspectiveCompareOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+  const [isConnectOpen, setIsConnectOpen] = useState<boolean>(false);
 
   // AI Provider config — persisted in localStorage
   const [providerConfig, setProviderConfigState] = useState<AIProviderConfig>(() => {
@@ -449,12 +454,51 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
         acronyms: []
       }));
 
+      // Phase 2: connect each learning to its source project (by title) so it shows in the graph
+      const learningRels: Relationship[] = learningNotes.map((ln, i) => ({
+        id: `rel-learn-${Date.now()}-${i}`,
+        sourceId: ln.id,
+        targetId: sourceNote.id,
+        sourceName: ln.title,
+        targetName: sourceNote.title,
+        relationshipType: 'LEARNED_FROM',
+        baseScore: 1,
+        confidence: 1,
+        evidence: ['Learned from project'],
+        sourceNoteIds: [sourceNote.id],
+        userConfirmed: true,
+        createdAt: new Date().toISOString()
+      }));
+
       setNotes(prev => [...learningNotes, ...prev]);
+      setRelationships(prev => [...learningRels, ...prev]);
       return learnings;
     } catch (err) {
       console.error('Extract learnings error:', err);
       return [];
     }
+  };
+
+  // Phase 2: manually link two hub items with a typed relationship (renders as a graph edge).
+  const linkItems = (sourceNoteId: string, targetNoteId: string, relationshipType: RelationshipType): void => {
+    const src = notes.find(n => n.id === sourceNoteId);
+    const tgt = notes.find(n => n.id === targetNoteId);
+    if (!src || !tgt || src.id === tgt.id) return;
+    const rel: Relationship = {
+      id: `rel-link-${Date.now()}`,
+      sourceId: src.id,
+      targetId: tgt.id,
+      sourceName: src.title,
+      targetName: tgt.title,
+      relationshipType,
+      baseScore: 1,
+      confidence: 1,
+      evidence: ['Manual link'],
+      sourceNoteIds: [src.id, tgt.id],
+      userConfirmed: true,
+      createdAt: new Date().toISOString()
+    };
+    setRelationships(prev => [rel, ...prev]);
   };
 
   // Phase 1: the system learns about YOU — a portrait built from your whole graph.
@@ -662,9 +706,12 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
         setIsSettingsOpen,
         isProfileOpen,
         setIsProfileOpen,
+        isConnectOpen,
+        setIsConnectOpen,
         addNote,
         extractLearnings,
         getProfileInsights,
+        linkItems,
         updateNote,
         deleteNote,
         reAnalyzeNote,
