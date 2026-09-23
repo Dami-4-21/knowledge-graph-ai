@@ -66,6 +66,7 @@ interface KnowledgeGraphContextType {
   addNote: (title: string, content: string, collection?: string, tags?: string[], source?: string, itemType?: NodeType, lane?: Lane, sourceUrl?: string, imageUrl?: string) => Promise<Note>;
   extractLearnings: (noteId: string) => Promise<string[]>;
   getProfileInsights: () => Promise<any>;
+  suggestAppliesTo: (projectTitle: string, projectContent: string) => Promise<{ id: string; title: string; reason: string }[]>;
   linkItems: (sourceNoteId: string, targetNoteId: string, relationshipType: RelationshipType) => void;
   uploadImage: (dataUrl: string) => Promise<string>;
   extractImage: (dataUrl: string) => Promise<any>;
@@ -483,6 +484,38 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
     }
   };
 
+  // Phase 2b: given a project's title/content, ask the AI which past Learnings apply to it.
+  // Returns [{ id, title, reason }] so the caller can offer to link them (APPLIES_TO).
+  const suggestAppliesTo = async (
+    projectTitle: string,
+    projectContent: string
+  ): Promise<{ id: string; title: string; reason: string }[]> => {
+    const learnings = notes
+      .filter(n => n.itemType === 'Learning')
+      .map(n => ({ id: n.id, title: n.title, content: (n.content || '').slice(0, 300) }));
+    if (learnings.length === 0) return [];
+    try {
+      const res = await apiFetch('/api/applies-to', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectTitle, projectContent, learnings, providerConfig })
+      });
+      if (!res.ok) throw new Error('Applies-to request failed');
+      const data = await res.json();
+      const suggestions: { id: string; reason: string }[] = Array.isArray(data.suggestions) ? data.suggestions : [];
+      // Resolve each suggested id back to its learning note title (skip any that no longer exist).
+      return suggestions
+        .map(s => {
+          const note = notes.find(n => n.id === s.id);
+          return note ? { id: note.id, title: note.title, reason: s.reason || '' } : null;
+        })
+        .filter((x): x is { id: string; title: string; reason: string } => x !== null);
+    } catch (err) {
+      console.error('suggestAppliesTo error:', err);
+      return [];
+    }
+  };
+
   // Phase 2: manually link two hub items with a typed relationship (renders as a graph edge).
   const linkItems = (sourceNoteId: string, targetNoteId: string, relationshipType: RelationshipType): void => {
     const src = notes.find(n => n.id === sourceNoteId);
@@ -738,6 +771,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
         addNote,
         extractLearnings,
         getProfileInsights,
+        suggestAppliesTo,
         linkItems,
         uploadImage,
         extractImage,

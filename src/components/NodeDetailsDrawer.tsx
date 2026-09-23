@@ -30,13 +30,22 @@ export const NodeDetailsDrawer: React.FC = () => {
 
   const activePerspective = perspectives.find(p => p.id === activePerspectiveId) || perspectives[0];
 
+  // Phase 2b: hub items are graph nodes keyed by title — a node may BE an item (Project/Repo/…).
+  const ENTITY_TYPES = ['Repo', 'Screenshot', 'Project', 'Client', 'Domain', 'DnsRecord', 'Server', 'Service', 'Vision', 'Learning'];
+  const itemNote = notes.find(n =>
+    n.title.toLowerCase().trim() === selectedNodeId.toLowerCase() &&
+    !!n.itemType && ENTITY_TYPES.includes(n.itemType)
+  );
+
   // Find node details across notes
   const allConcepts = notes.flatMap(n => n.concepts);
   const matchingConcept = allConcepts.find(c => c.name.toLowerCase() === selectedNodeId.toLowerCase());
 
-  const conceptName = matchingConcept ? matchingConcept.name : selectedNodeId;
-  const conceptType = matchingConcept ? matchingConcept.type : 'Concept';
-  const description = matchingConcept ? matchingConcept.description : 'Extracted knowledge node.';
+  const conceptName = itemNote ? itemNote.title : matchingConcept ? matchingConcept.name : selectedNodeId;
+  const conceptType = itemNote?.itemType || (matchingConcept ? matchingConcept.type : 'Concept');
+  const description = itemNote
+    ? (itemNote.content ? itemNote.content.slice(0, 400) : 'Hub item.')
+    : matchingConcept ? matchingConcept.description : 'Extracted knowledge node.';
 
   // Find connected relationships
   const connectedRels = relationships.filter(r =>
@@ -44,8 +53,9 @@ export const NodeDetailsDrawer: React.FC = () => {
     r.targetName.toLowerCase() === selectedNodeId.toLowerCase()
   );
 
-  // Find source notes
+  // Find source notes — concept/acronym sources plus the item note itself (if this node is an item).
   const sourceNotes = notes.filter(n =>
+    (itemNote && n.id === itemNote.id) ||
     n.concepts.some(c => c.name.toLowerCase() === selectedNodeId.toLowerCase()) ||
     n.acronyms.some(a => a.acronym.toLowerCase() === selectedNodeId.toLowerCase())
   );
@@ -168,7 +178,19 @@ export const NodeDetailsDrawer: React.FC = () => {
       </div>
 
       {/* Drawer Footer Action */}
-      <div className="p-3 border-t border-[#2B2F36] bg-[#161A1E]">
+      <div className="p-3 border-t border-[#2B2F36] bg-[#161A1E] space-y-2">
+        {itemNote && (
+          <button
+            onClick={() => {
+              setActiveNoteId(itemNote.id);
+              setSelectedNodeId(null);
+            }}
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded transition-colors flex items-center justify-center gap-1.5 uppercase font-mono"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Open Item</span>
+          </button>
+        )}
         <button
           onClick={() => {
             setIsAskOpen(true);

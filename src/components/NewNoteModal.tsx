@@ -9,7 +9,9 @@ import {
   Tag,
   Globe,
   ImagePlus,
-  Trash2
+  Trash2,
+  Lightbulb,
+  Check
 } from 'lucide-react';
 import { useKnowledgeGraph } from '../context/KnowledgeGraphContext';
 import { NodeType, Lane } from '../types';
@@ -28,7 +30,7 @@ const LANES: { value: Lane; label: string }[] = [
 ];
 
 export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) => {
-  const { addNote, uploadImage, extractImage } = useKnowledgeGraph();
+  const { addNote, uploadImage, extractImage, suggestAppliesTo, linkItems } = useKnowledgeGraph();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -46,7 +48,42 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState('');
 
+  // Phase 2b: "applies-to" — past learnings the AI thinks are relevant to this new project.
+  const [appliesSuggestions, setAppliesSuggestions] = useState<{ id: string; title: string; reason: string }[]>([]);
+  const [selectedLearningIds, setSelectedLearningIds] = useState<string[]>([]);
+  const [appliesBusy, setAppliesBusy] = useState(false);
+  const [appliesMsg, setAppliesMsg] = useState('');
+
   if (!isOpen) return null;
+
+  const toggleLearning = (id: string) => {
+    setSelectedLearningIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const findRelevantLearnings = async () => {
+    setAppliesBusy(true);
+    setAppliesMsg('');
+    try {
+      const suggestions = await suggestAppliesTo(title, content);
+      setAppliesSuggestions(suggestions);
+      setSelectedLearningIds(suggestions.map(s => s.id)); // pre-select all; user can uncheck
+      setAppliesMsg(
+        suggestions.length
+          ? `Found ${suggestions.length} past learning${suggestions.length > 1 ? 's' : ''} that may apply.`
+          : 'No past learnings looked relevant (or none captured yet).'
+      );
+    } catch (err: any) {
+      setAppliesMsg(err?.message || 'Could not fetch suggestions.');
+    } finally {
+      setAppliesBusy(false);
+    }
+  };
+
+  const clearApplies = () => {
+    setAppliesSuggestions([]);
+    setSelectedLearningIds([]);
+    setAppliesMsg('');
+  };
 
   const handleImageFile = (file: File | null | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -125,7 +162,7 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
       .filter(Boolean);
 
     try {
-      await addNote(
+      const created = await addNote(
         title || 'New Note',
         content || (uploadedUrl ? '(screenshot)' : ''),
         collection || 'General',
@@ -136,6 +173,10 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
         url.trim() || undefined,
         uploadedUrl
       );
+      // Phase 2b: link the chosen past learnings to this new project (Learning —Applies To→ Project).
+      if (created?.id && selectedLearningIds.length) {
+        selectedLearningIds.forEach(learningId => linkItems(learningId, created.id, 'APPLIES_TO'));
+      }
       setTitle('');
       setContent('');
       setTagsString('');
@@ -143,6 +184,7 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
       setItemType('Note');
       setLane('inbox');
       clearImage();
+      clearApplies();
       onClose();
     } catch (err) {
       console.error('Failed to create note:', err);
@@ -376,6 +418,60 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
               className="w-full h-44 p-3 bg-[#0B0E11] border border-[#2B2F36] rounded text-xs text-gray-200 placeholder-gray-500 leading-relaxed focus:outline-none focus:border-yellow-500 resize-y font-sans"
             />
           </div>
+
+          {/* Applies-To suggestions (Phase 2b) — only meaningful for Projects */}
+          {itemType === 'Project' && (
+            <div className="border border-[#2B2F36] rounded p-3 space-y-2 bg-[#0B0E11]">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-300 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                  <Lightbulb className="w-3.5 h-3.5 text-indigo-400" />
+                  Learnings that apply
+                </span>
+                <button
+                  type="button"
+                  onClick={findRelevantLearnings}
+                  disabled={appliesBusy}
+                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {appliesBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  <span>{appliesBusy ? 'Thinking…' : 'Suggest from past learnings'}</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 font-sans">
+                Ask AI which of your past learnings apply to this project. Selected ones get linked (Applies&nbsp;To) so they show in the graph.
+              </p>
+
+              {appliesSuggestions.length > 0 && (
+                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1 no-scrollbar">
+                  {appliesSuggestions.map(s => {
+                    const checked = selectedLearningIds.includes(s.id);
+                    return (
+                      <button
+                        type="button"
+                        key={s.id}
+                        onClick={() => toggleLearning(s.id)}
+                        className={`w-full text-left p-2 rounded border flex items-start gap-2 transition-colors ${
+                          checked ? 'border-indigo-500 bg-indigo-500/10' : 'border-[#2B2F36] hover:border-[#3E434B]'
+                        }`}
+                      >
+                        <span className={`mt-0.5 w-4 h-4 shrink-0 rounded border flex items-center justify-center ${
+                          checked ? 'bg-indigo-500 border-indigo-500' : 'border-[#3E434B]'
+                        }`}>
+                          {checked && <Check className="w-3 h-3 text-white" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-bold text-white text-[12px] font-sans truncate">{s.title}</span>
+                          {s.reason && <span className="block text-[11px] text-gray-400 font-sans leading-snug">{s.reason}</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {appliesMsg && <p className="text-[11px] text-gray-400 font-sans">{appliesMsg}</p>}
+            </div>
+          )}
 
           {/* Action Footer */}
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#2B2F36]">

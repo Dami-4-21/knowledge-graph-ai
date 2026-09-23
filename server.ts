@@ -886,6 +886,54 @@ Return JSON:
 });
 
 // ---------------------------------------------------------------
+// API Route 9: Applies-To (Phase 2b — which past learnings apply to a new project)
+// ---------------------------------------------------------------
+app.post('/api/applies-to', async (req, res) => {
+  try {
+    const { projectTitle, projectContent, learnings } = req.body;
+    const list = Array.isArray(learnings) ? learnings : [];
+    if (list.length === 0) return res.json({ suggestions: [] });
+
+    const cfg = getProvider(req.body);
+    if (!cfg) {
+      // No AI configured → degrade gracefully (no suggestions rather than an error).
+      return res.json({ suggestions: [] });
+    }
+
+    const systemPrompt = `You help a builder reuse what they already learned. Given a NEW project and a list of the user's past LEARNINGS (each with an id and text), pick only the learnings that are genuinely relevant to this project and explain briefly why each applies. Ignore learnings that don't clearly apply. Return only valid JSON.`;
+    const userMessage = `New Project Title: ${projectTitle || 'Untitled'}
+New Project Notes:
+${projectContent || '(no description yet)'}
+
+Past Learnings (JSON array of {id, text}):
+${JSON.stringify(list.map((l: any) => ({ id: l.id, text: l.title || l.content || '' })).slice(0, 60))}
+
+Return the subset that applies to this project, as JSON:
+{
+  "suggestions": [
+    { "id": "<the learning id>", "reason": "one short sentence on why it applies to this project" }
+  ]
+}
+Only include learnings that meaningfully apply. If none apply, return {"suggestions": []}.`;
+
+    const raw = await callAI(cfg, systemPrompt, userMessage);
+    const parsed = JSON.parse(raw);
+    const validIds = new Set(list.map((l: any) => String(l.id)));
+    const suggestions = Array.isArray(parsed.suggestions)
+      ? parsed.suggestions
+          .filter((s: any) => s && validIds.has(String(s.id)))
+          .map((s: any) => ({ id: String(s.id), reason: typeof s.reason === 'string' ? s.reason : '' }))
+          .slice(0, 20)
+      : [];
+    return res.json({ suggestions });
+  } catch (error: any) {
+    console.error('Applies-To Error:', error.message);
+    // Best-effort feature: never block project creation on a failure here.
+    return res.json({ suggestions: [] });
+  }
+});
+
+// ---------------------------------------------------------------
 // Vite Integration for Dev / Static Files for Prod
 // ---------------------------------------------------------------
 async function startServer() {
