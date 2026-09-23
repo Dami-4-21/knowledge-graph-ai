@@ -410,7 +410,7 @@ export const KnowledgeGraph: React.FC = () => {
       {/* Top Floating Controls Bar */}
       <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
         {/* Mode Selector Pills */}
-        <div className="flex items-center gap-1 bg-[#161A1E]/90 backdrop-blur-md p-1 rounded border border-[#2B2F36] shadow-2xl pointer-events-auto text-xs font-mono">
+        <div className="flex items-center gap-1 bg-[#161A1E]/90 backdrop-blur-md p-1 rounded border border-[#2B2F36] shadow-2xl pointer-events-auto text-xs font-mono max-w-full overflow-x-auto no-scrollbar">
           {(['GLOBAL', 'PERSPECTIVE', 'DISCOVERY', 'TIMELINE'] as GraphMode[]).map(mode => (
             <button
               key={mode}

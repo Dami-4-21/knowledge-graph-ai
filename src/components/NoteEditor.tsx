@@ -117,14 +117,14 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ onOpenNewNote }) => {
   return (
     <div className="h-full flex flex-col bg-[#161A1E] text-[#EAECEF] overflow-hidden">
       {/* Editor Header Bar */}
-      <div className="px-4 py-2 border-b border-[#2B2F36] flex items-center justify-between gap-3 bg-[#161A1E] shrink-0 font-mono">
-        <div className="flex items-center gap-2 text-xs text-gray-400">
+      <div className="px-4 py-2 border-b border-[#2B2F36] flex flex-wrap items-center justify-between gap-2 bg-[#161A1E] shrink-0 font-mono">
+        <div className="flex items-center gap-2 text-xs text-gray-400 shrink-0">
           <span className="font-bold text-yellow-400">{activeNote.collection || 'General'}</span>
           <span>•</span>
           <span>Created {new Date(activeNote.createdAt).toLocaleDateString()}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
           {/* Re-analyze Button */}
           <button
             onClick={handleReAnalyze}

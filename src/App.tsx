@@ -46,7 +46,7 @@ export const MainAppContent: React.FC = () => {
         <div
           className={`h-full transition-all duration-200 border-r border-[#2B2F36] shrink-0 ${
             viewLayout === 'split'
-              ? 'w-80 sm:w-[380px] lg:w-[420px]'
+              ? 'w-72 sm:w-[340px] lg:w-[420px]'
               : viewLayout === 'notes-focus'
               ? 'flex-1'
               : 'w-0 opacity-0 pointer-events-none'
