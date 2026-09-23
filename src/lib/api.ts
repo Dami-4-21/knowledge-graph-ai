@@ -43,6 +43,14 @@ export interface ApiError extends Error {
   status?: number;
 }
 
+/** Build an <img>-usable src for a /api/uploads/... path, attaching the access token. */
+export function imageSrc(url: string): string {
+  if (!url) return '';
+  const token = getToken();
+  if (!token) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(token);
+}
+
 /** fetch() wrapper that injects the access-token header on every /api call. */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = getToken();

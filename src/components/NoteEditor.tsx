@@ -15,6 +15,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { useKnowledgeGraph } from '../context/KnowledgeGraphContext';
+import { imageSrc } from '../lib/api';
 
 interface NoteEditorProps {
   onOpenNewNote: () => void;
@@ -230,6 +231,17 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ onOpenNewNote }) => {
             </div>
           )}
         </div>
+
+        {/* Screenshot (Phase 3) */}
+        {activeNote.imageUrl && (
+          <div>
+            <img
+              src={imageSrc(activeNote.imageUrl)}
+              alt="attached screenshot"
+              className="max-h-64 rounded border border-[#2B2F36] object-contain"
+            />
+          </div>
+        )}
 
         {/* Content Area */}
         <div className="pt-2 min-h-[200px]">

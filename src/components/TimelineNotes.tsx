@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useKnowledgeGraph } from '../context/KnowledgeGraphContext';
+import { imageSrc } from '../lib/api';
 
 interface TimelineNotesProps {
   onOpenNewNote: () => void;
@@ -189,6 +190,15 @@ export const TimelineNotes: React.FC<TimelineNotesProps> = ({ onOpenNewNote }) =
                             </span>
                           )}
                         </div>
+                      )}
+
+                      {/* Screenshot thumbnail (Phase 3) */}
+                      {note.imageUrl && (
+                        <img
+                          src={imageSrc(note.imageUrl)}
+                          alt="screenshot"
+                          className="mt-2 h-20 w-full object-cover rounded border border-[#2B2F36]"
+                        />
                       )}
 
                       {/* Snippet */}

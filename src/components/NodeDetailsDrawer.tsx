@@ -1,4 +1,5 @@
 import React from 'react';
+import { relationshipLabel } from '../types';
 import {
   X,
   BookOpen,
@@ -118,7 +119,7 @@ export const NodeDetailsDrawer: React.FC = () => {
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="font-bold text-white truncate font-sans">{otherName}</span>
                       <span className="text-[10px] text-gray-400 uppercase bg-[#2B2F36] px-1.5 py-0.5 rounded">
-                        {rel.relationshipType}
+                        {relationshipLabel(rel.relationshipType)}
                       </span>
                     </div>
 

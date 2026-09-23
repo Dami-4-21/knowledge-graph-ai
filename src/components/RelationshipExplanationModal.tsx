@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { relationshipLabel } from '../types';
 import {
   X,
   HelpCircle,
@@ -62,7 +63,7 @@ export const RelationshipExplanationModal: React.FC = () => {
               </span>
               <h3 className="text-xs font-bold flex items-center gap-1.5 mt-0.5 font-sans">
                 <span>{rel.sourceName}</span>
-                <span className="px-1.5 py-0.2 bg-yellow-500 text-black text-[10px] font-bold rounded uppercase">{rel.relationshipType}</span>
+                <span className="px-1.5 py-0.2 bg-yellow-500 text-black text-[10px] font-bold rounded">{relationshipLabel(rel.relationshipType)}</span>
                 <span>{rel.targetName}</span>
               </h3>
             </div>

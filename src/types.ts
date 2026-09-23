@@ -33,6 +33,16 @@ export type RelationshipType =
   | 'LEARNED_FROM'
   | 'APPLIES_TO';
 
+/** Human-friendly label for a relationship type, e.g. 'HOSTED_ON' -> 'Hosted On'. */
+export function relationshipLabel(t: RelationshipType | string): string {
+  return String(t)
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 export interface ExtractedConcept {
   id: string;
   name: string;
@@ -60,6 +70,7 @@ export interface Note {
   sourceUrl?: string;
   itemType?: NodeType; // Phase 1: what kind of thing this is (Repo, Project, Client, ...)
   lane?: Lane;         // Phase 1: learning / testing / client / inbox
+  imageUrl?: string;   // Phase 3: server path to an attached screenshot (/api/uploads/..)
   tags: string[];
   collection: string;
   processingStatus: ProcessingStatus;

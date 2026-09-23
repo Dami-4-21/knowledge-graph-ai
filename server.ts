@@ -15,17 +15,19 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // ---------------------------------------------------------------
 // Phase 0: Server-side persistence + secret-link access control
 // ---------------------------------------------------------------
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const IMG_DIR = path.join(DATA_DIR, 'uploads'); // Phase 3: screenshot files
 const APP_ACCESS_TOKEN = (process.env.APP_ACCESS_TOKEN || '').trim();
 
 function ensureDataDir(): void {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* ignore */ }
+  try { fs.mkdirSync(IMG_DIR, { recursive: true }); } catch { /* ignore */ }
 }
 
 function readState(): any | null {
@@ -274,6 +276,102 @@ app.put('/api/state', (req, res) => {
   } catch (err: any) {
     console.error('writeState error:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to save state.' });
+  }
+});
+
+// ---------------------------------------------------------------
+// Phase 3: Screenshot upload (files on disk) + AI image reading
+// ---------------------------------------------------------------
+const IMG_EXT: Record<string, string> = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg',
+  'image/webp': 'webp', 'image/gif': 'gif',
+};
+
+app.post('/api/upload-image', (req, res) => {
+  try {
+    const dataUrl: string = req.body?.dataUrl || '';
+    const m = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
+    if (!m) return res.status(400).json({ error: 'Invalid image data URL' });
+    const ext = IMG_EXT[m[1].toLowerCase()];
+    if (!ext) return res.status(400).json({ error: 'Unsupported image type' });
+    ensureDataDir();
+    const filename = `${crypto.randomBytes(8).toString('hex')}.${ext}`;
+    fs.writeFileSync(path.join(IMG_DIR, filename), Buffer.from(m[2], 'base64'));
+    return res.json({ url: `/api/uploads/${filename}` });
+  } catch (err: any) {
+    console.error('upload-image error:', err.message);
+    return res.status(500).json({ error: err.message || 'Upload failed' });
+  }
+});
+
+app.get('/api/uploads/:file', (req, res) => {
+  const file = req.params.file;
+  if (!/^[A-Za-z0-9._-]+$/.test(file)) return res.status(400).json({ error: 'Bad filename' });
+  const full = path.join(IMG_DIR, file);
+  if (!fs.existsSync(full)) return res.status(404).json({ error: 'Not found' });
+  return res.sendFile(full);
+});
+
+app.post('/api/extract-image', async (req, res) => {
+  // Best-effort vision read; ALWAYS returns 200 so the UI degrades gracefully.
+  try {
+    const { dataUrl, providerConfig } = req.body || {};
+    if (!dataUrl) return res.json({ title: '', description: '', tags: [], text: '', error: 'No image supplied' });
+    const apiKey = providerConfig?.apiKey || process.env.OPENROUTER_API_KEY;
+    if (!apiKey) return res.json({ title: '', description: '', tags: [], text: '', error: 'No API key configured' });
+
+    // Try several free vision-capable models in order; free tiers are often
+    // rate-limited, so fall through until one answers.
+    const FALLBACK_VISION_MODELS = [
+      'qwen/qwen3.8-27b:free',
+      'google/gemma-4-31b-it:free',
+      'google/gemma-4-26b-a4b-it:free',
+      'inclusionai/ling-3.0-flash-vl:free',
+    ];
+    const userModel = (providerConfig?.model && providerConfig.model !== 'openrouter/auto')
+      ? [providerConfig.model] : [];
+    const models = [...userModel, ...FALLBACK_VISION_MODELS];
+
+    let lastError = 'no vision model responded';
+    for (const model of models) {
+      try {
+        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Look at this screenshot the user saved. Return ONLY JSON {"title":"short title","description":"1-2 sentence summary","tags":[".."],"text":"any important text visible"}' },
+                { type: 'image_url', image_url: { url: dataUrl } },
+              ],
+            }],
+            response_format: { type: 'json_object' },
+            max_tokens: 1024,
+          }),
+        });
+        if (!resp.ok) {
+          lastError = `Vision API ${resp.status} (${model}): ${(await resp.text()).slice(0, 120)}`;
+          continue; // try next model
+        }
+        const data: any = await resp.json();
+        const raw = data.choices?.[0]?.message?.content?.trim() ?? '{}';
+        const parsed = JSON.parse(raw);
+        return res.json({
+          title: parsed.title || '',
+          description: parsed.description || '',
+          tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+          text: parsed.text || '',
+          model,
+        });
+      } catch (e: any) {
+        lastError = `${model}: ${e.message}`;
+      }
+    }
+    return res.json({ title: '', description: '', tags: [], text: '', error: lastError });
+  } catch (err: any) {
+    return res.json({ title: '', description: '', tags: [], text: '', error: err.message });
   }
 });
 

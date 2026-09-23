@@ -7,7 +7,9 @@ import {
   Loader2,
   Folder,
   Tag,
-  Globe
+  Globe,
+  ImagePlus,
+  Trash2
 } from 'lucide-react';
 import { useKnowledgeGraph } from '../context/KnowledgeGraphContext';
 import { NodeType, Lane } from '../types';
@@ -26,7 +28,7 @@ const LANES: { value: Lane; label: string }[] = [
 ];
 
 export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) => {
-  const { addNote } = useKnowledgeGraph();
+  const { addNote, uploadImage, extractImage } = useKnowledgeGraph();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -37,11 +39,84 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
   const [url, setUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Phase 3: screenshot capture
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [uploadedUrl, setUploadedUrl] = useState<string | undefined>(undefined);
+  const [imgBusy, setImgBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState('');
+
   if (!isOpen) return null;
+
+  const handleImageFile = (file: File | null | undefined) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      setImageDataUrl(dataUrl);
+      setAiMsg('');
+      if (itemType === 'Note') setItemType('Screenshot');
+      setImgBusy(true);
+      try {
+        const u = await uploadImage(dataUrl);
+        setUploadedUrl(u);
+      } catch (err) {
+        console.error('Image upload failed:', err);
+        setAiMsg('Upload failed — you can still save without the image.');
+      } finally {
+        setImgBusy(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    handleImageFile(e.dataTransfer.files?.[0]);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.type.startsWith('image/')) {
+        handleImageFile(it.getAsFile());
+        break;
+      }
+    }
+  };
+
+  const clearImage = () => {
+    setImageDataUrl(null);
+    setUploadedUrl(undefined);
+    setAiMsg('');
+  };
+
+  const readWithAI = async () => {
+    if (!imageDataUrl) return;
+    setAiBusy(true);
+    setAiMsg('');
+    try {
+      const r = await extractImage(imageDataUrl);
+      if (r && !r.error && (r.title || r.description || r.text)) {
+        if (r.title && !title.trim()) setTitle(r.title);
+        const body = [r.description, r.text].filter(Boolean).join('\n\n');
+        if (body) setContent(prev => (prev.trim() ? prev + '\n\n' + body : body));
+        if (Array.isArray(r.tags) && r.tags.length && !tagsString.trim()) setTagsString(r.tags.join(', '));
+        setAiMsg('AI read the screenshot ✓');
+      } else {
+        setAiMsg(r?.error ? `Could not read image: ${r.error}` : 'No readable text found in image.');
+      }
+    } catch (err: any) {
+      setAiMsg(err.message || 'Image read failed.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() || isSubmitting) return;
+    if ((!content.trim() && !uploadedUrl) || isSubmitting) return;
 
     setIsSubmitting(true);
     const tagsArray = tagsString
@@ -52,13 +127,14 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
     try {
       await addNote(
         title || 'New Note',
-        content,
+        content || (uploadedUrl ? '(screenshot)' : ''),
         collection || 'General',
         tagsArray,
         url.trim() ? url.trim() : 'Manual Input',
         itemType,
         lane,
-        url.trim() || undefined
+        url.trim() || undefined,
+        uploadedUrl
       );
       setTitle('');
       setContent('');
@@ -66,6 +142,7 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
       setUrl('');
       setItemType('Note');
       setLane('inbox');
+      clearImage();
       onClose();
     } catch (err) {
       console.error('Failed to create note:', err);
@@ -109,7 +186,7 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150 select-none font-mono">
+    <div onPaste={handlePaste} className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150 select-none font-mono">
       <div className="bg-[#161A1E] rounded shadow-2xl border border-[#2B2F36] max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh] text-[#EAECEF]">
         {/* Header */}
         <div className="p-3 bg-[#0B0E11] text-white flex items-center justify-between border-b border-[#2B2F36]">
@@ -172,7 +249,6 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B2F36] rounded text-sm font-bold text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500 font-sans"
-              required
             />
           </div>
 
@@ -251,6 +327,43 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
             />
           </div>
 
+          {/* Screenshot / Image (optional, Phase 3) */}
+          <div>
+            <label className="font-bold text-gray-400 uppercase tracking-wider text-[10px] block mb-1">
+              Screenshot / Image (optional)
+            </label>
+            <div
+              onDrop={handleDrop}
+              onDragOver={(e) => e.preventDefault()}
+              className="border border-dashed border-[#2B2F36] rounded p-3 flex items-center gap-3"
+            >
+              {imageDataUrl ? (
+                <img src={imageDataUrl} alt="preview" className="h-16 w-16 object-cover rounded border border-[#2B2F36] shrink-0" />
+              ) : (
+                <div className="text-gray-500 text-[11px] flex-1 font-sans">Drop, paste, or choose an image (phone camera/gallery supported).</div>
+              )}
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <label className="cursor-pointer px-2 py-1 bg-[#2B2F36] hover:bg-[#3E434B] text-white rounded font-bold border border-[#3E434B] inline-flex items-center gap-1.5">
+                  {imgBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+                  <span>{imgBusy ? 'Uploading…' : imageDataUrl ? 'Replace' : 'Choose image'}</span>
+                  <input type="file" accept="image/*" capture="environment" onChange={(e) => handleImageFile(e.target.files?.[0])} className="hidden" />
+                </label>
+                {imageDataUrl && (
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={readWithAI} disabled={aiBusy} className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold inline-flex items-center gap-1.5 disabled:opacity-50">
+                      {aiBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      <span>{aiBusy ? 'Reading…' : 'Read with AI'}</span>
+                    </button>
+                    <button type="button" onClick={clearImage} title="Remove image" className="p-1 text-gray-400 hover:text-rose-400 rounded">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            {aiMsg && <p className="text-[11px] text-gray-400 mt-1 font-sans">{aiMsg}</p>}
+          </div>
+
           {/* Content Field */}
           <div>
             <label className="font-bold text-gray-400 uppercase tracking-wider text-[10px] block mb-1">
@@ -261,7 +374,6 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full h-44 p-3 bg-[#0B0E11] border border-[#2B2F36] rounded text-xs text-gray-200 placeholder-gray-500 leading-relaxed focus:outline-none focus:border-yellow-500 resize-y font-sans"
-              required
             />
           </div>
 
@@ -276,7 +388,7 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !content.trim()}
+              disabled={isSubmitting || (!content.trim() && !uploadedUrl)}
               className="px-5 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 uppercase font-mono"
             >
               {isSubmitting ? (

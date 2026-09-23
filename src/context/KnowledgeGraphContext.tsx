@@ -63,10 +63,12 @@ interface KnowledgeGraphContextType {
   setIsConnectOpen: (open: boolean) => void;
 
   // Actions
-  addNote: (title: string, content: string, collection?: string, tags?: string[], source?: string, itemType?: NodeType, lane?: Lane, sourceUrl?: string) => Promise<Note>;
+  addNote: (title: string, content: string, collection?: string, tags?: string[], source?: string, itemType?: NodeType, lane?: Lane, sourceUrl?: string, imageUrl?: string) => Promise<Note>;
   extractLearnings: (noteId: string) => Promise<string[]>;
   getProfileInsights: () => Promise<any>;
   linkItems: (sourceNoteId: string, targetNoteId: string, relationshipType: RelationshipType) => void;
+  uploadImage: (dataUrl: string) => Promise<string>;
+  extractImage: (dataUrl: string) => Promise<any>;
   updateNote: (id: string, title: string, content: string, collection?: string, tags?: string[]) => Promise<void>;
   deleteNote: (id: string) => void;
   reAnalyzeNote: (id: string) => Promise<void>;
@@ -282,7 +284,8 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
     source: string = 'Manual Note',
     itemType: NodeType = 'Note',
     lane: Lane = 'inbox',
-    sourceUrl?: string
+    sourceUrl?: string,
+    imageUrl?: string
   ): Promise<Note> => {
     const newNoteId = `note-${Date.now()}`;
     const initialNote: Note = {
@@ -295,6 +298,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
       sourceUrl,
       itemType,
       lane,
+      imageUrl,
       tags: tags.length ? tags : ['note'],
       collection,
       processingStatus: 'PROCESSING',
@@ -499,6 +503,29 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
       createdAt: new Date().toISOString()
     };
     setRelationships(prev => [rel, ...prev]);
+  };
+
+  // Phase 3: upload a screenshot to the server (stored as a file), returns its /api/uploads path.
+  const uploadImage = async (dataUrl: string): Promise<string> => {
+    const res = await apiFetch('/api/upload-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl })
+    });
+    if (!res.ok) throw new Error('Image upload failed');
+    const data = await res.json();
+    return data.url as string;
+  };
+
+  // Phase 3: best-effort AI read of a screenshot -> { title, description, tags, text, error? }.
+  const extractImage = async (dataUrl: string): Promise<any> => {
+    const res = await apiFetch('/api/extract-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl, providerConfig })
+    });
+    if (!res.ok) throw new Error('Image read failed');
+    return res.json();
   };
 
   // Phase 1: the system learns about YOU — a portrait built from your whole graph.
@@ -712,6 +739,8 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
         extractLearnings,
         getProfileInsights,
         linkItems,
+        uploadImage,
+        extractImage,
         updateNote,
         deleteNote,
         reAnalyzeNote,
