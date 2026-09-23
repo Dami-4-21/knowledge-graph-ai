@@ -321,52 +321,98 @@ app.post('/api/extract-image', async (req, res) => {
     if (!apiKey) return res.json({ title: '', description: '', tags: [], text: '', error: 'No API key configured' });
 
     // Try several free vision-capable models in order; free tiers are often
-    // rate-limited, so fall through until one answers.
+    // rate-limited (429) or only accept certain request shapes, so we fall
+    // through until one actually returns readable content. Ordered by what
+    // was observed working most reliably. Note: we deliberately DON'T send
+    // response_format:json_object — several free vision models 400 on it —
+    // and instead ask for JSON in the prompt + parse leniently below.
     const FALLBACK_VISION_MODELS = [
+      'nex-agi/nex-n2.5-mini:free',        // verified working, good OCR
+      'nex-agi/nex-n2.5-pro:free',
+      'dots-studio/dots-3-note-preview:free',
       'qwen/qwen3.8-27b:free',
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free',
       'inclusionai/ling-3.0-flash-vl:free',
     ];
+    // Optional override: set VISION_MODEL in .env (e.g. a paid model) to try first.
+    const envModel = process.env.VISION_MODEL ? [process.env.VISION_MODEL] : [];
     const userModel = (providerConfig?.model && providerConfig.model !== 'openrouter/auto')
       ? [providerConfig.model] : [];
-    const models = [...userModel, ...FALLBACK_VISION_MODELS];
+    const models = [...envModel, ...userModel, ...FALLBACK_VISION_MODELS];
+
+    // Lenient JSON parse: strips ```json fences / prose and extracts the object.
+    const looseParse = (raw: string): any => {
+      let s = (raw || '').trim();
+      s = s.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+      const a = s.indexOf('{');
+      const b = s.lastIndexOf('}');
+      if (a >= 0 && b > a) s = s.slice(a, b + 1);
+      return JSON.parse(s);
+    };
+
+    // Free vision models frequently 429, or route to a provider that hangs for
+    // minutes. Cap each attempt so one slow model can't stall the whole request —
+    // abandon it and move to the next. Also cap how many models we try in total.
+    const PER_MODEL_TIMEOUT_MS = 20000;
+    const MAX_MODELS_TRIED = 5;
 
     let lastError = 'no vision model responded';
+    let tried = 0;
     for (const model of models) {
+      if (tried >= MAX_MODELS_TRIED) break;
+      tried++;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), PER_MODEL_TIMEOUT_MS);
       try {
         const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          signal: ctrl.signal,
           body: JSON.stringify({
             model,
             messages: [{
               role: 'user',
               content: [
-                { type: 'text', text: 'Look at this screenshot the user saved. Return ONLY JSON {"title":"short title","description":"1-2 sentence summary","tags":[".."],"text":"any important text visible"}' },
+                { type: 'text', text: 'Look at this screenshot the user saved. Respond with ONLY a JSON object (no markdown, no prose): {"title":"short title","description":"1-2 sentence summary","tags":["tag1","tag2"],"text":"ALL text visible in the image, verbatim"}' },
                 { type: 'image_url', image_url: { url: dataUrl } },
               ],
             }],
-            response_format: { type: 'json_object' },
-            max_tokens: 1024,
+            max_tokens: 1500,
           }),
         });
         if (!resp.ok) {
           lastError = `Vision API ${resp.status} (${model}): ${(await resp.text()).slice(0, 120)}`;
-          continue; // try next model
+          continue; // try next model (e.g. 429 rate-limited)
         }
         const data: any = await resp.json();
-        const raw = data.choices?.[0]?.message?.content?.trim() ?? '{}';
-        const parsed = JSON.parse(raw);
-        return res.json({
+        const raw = (data.choices?.[0]?.message?.content ?? '').trim();
+        if (!raw) { lastError = `${model}: empty response`; continue; } // some free models return nothing
+        let parsed: any;
+        try {
+          parsed = looseParse(raw);
+        } catch {
+          // Not JSON — but if the model returned prose, keep it as text rather than lose it.
+          parsed = { text: raw };
+        }
+        const result = {
           title: parsed.title || '',
           description: parsed.description || '',
           tags: Array.isArray(parsed.tags) ? parsed.tags : [],
           text: parsed.text || '',
-          model,
-        });
+        };
+        // Only accept if the model actually gave us something usable; else keep falling through.
+        if (!result.title && !result.description && !result.text && result.tags.length === 0) {
+          lastError = `${model}: no readable content`;
+          continue;
+        }
+        return res.json({ ...result, model });
       } catch (e: any) {
-        lastError = `${model}: ${e.message}`;
+        lastError = e?.name === 'AbortError'
+          ? `${model}: timed out after ${PER_MODEL_TIMEOUT_MS / 1000}s`
+          : `${model}: ${e.message}`;
+      } finally {
+        clearTimeout(timer);
       }
     }
     return res.json({ title: '', description: '', tags: [], text: '', error: lastError });
