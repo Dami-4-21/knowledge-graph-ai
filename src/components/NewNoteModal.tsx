@@ -10,11 +10,20 @@ import {
   Globe
 } from 'lucide-react';
 import { useKnowledgeGraph } from '../context/KnowledgeGraphContext';
+import { NodeType, Lane } from '../types';
 
 interface NewNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+const ITEM_TYPES: NodeType[] = ['Note', 'Repo', 'Screenshot', 'Project', 'Client', 'Domain', 'DnsRecord', 'Server', 'Service', 'Vision', 'Learning'];
+const LANES: { value: Lane; label: string }[] = [
+  { value: 'inbox', label: 'Inbox' },
+  { value: 'learning', label: 'Learning' },
+  { value: 'testing', label: 'Testing' },
+  { value: 'client', label: 'Client' },
+];
 
 export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) => {
   const { addNote } = useKnowledgeGraph();
@@ -23,6 +32,9 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
   const [content, setContent] = useState('');
   const [collection, setCollection] = useState('Operating Systems');
   const [tagsString, setTagsString] = useState('');
+  const [itemType, setItemType] = useState<NodeType>('Note');
+  const [lane, setLane] = useState<Lane>('inbox');
+  const [url, setUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -43,11 +55,17 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
         content,
         collection || 'General',
         tagsArray,
-        'Manual Input'
+        url.trim() ? url.trim() : 'Manual Input',
+        itemType,
+        lane,
+        url.trim() || undefined
       );
       setTitle('');
       setContent('');
       setTagsString('');
+      setUrl('');
+      setItemType('Note');
+      setLane('inbox');
       onClose();
     } catch (err) {
       console.error('Failed to create note:', err);
@@ -185,6 +203,52 @@ export const NewNoteModal: React.FC<NewNoteModalProps> = ({ isOpen, onClose }) =
                 className="w-full px-3 py-1.5 bg-[#0B0E11] border border-[#2B2F36] rounded text-xs text-white focus:outline-none focus:border-yellow-500 font-sans"
               />
             </div>
+          </div>
+
+          {/* Type & Lane */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-bold text-gray-400 uppercase tracking-wider text-[10px] block mb-1">
+                Type
+              </label>
+              <select
+                value={itemType}
+                onChange={(e) => setItemType(e.target.value as NodeType)}
+                className="w-full px-3 py-1.5 bg-[#0B0E11] border border-[#2B2F36] rounded text-xs font-bold text-white focus:outline-none focus:border-yellow-500 font-sans"
+              >
+                {ITEM_TYPES.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="font-bold text-gray-400 uppercase tracking-wider text-[10px] block mb-1">
+                Lane
+              </label>
+              <select
+                value={lane}
+                onChange={(e) => setLane(e.target.value as Lane)}
+                className="w-full px-3 py-1.5 bg-[#0B0E11] border border-[#2B2F36] rounded text-xs font-bold text-white focus:outline-none focus:border-yellow-500 font-sans"
+              >
+                {LANES.map(l => (
+                  <option key={l.value} value={l.value}>{l.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* URL (optional) */}
+          <div>
+            <label className="font-bold text-gray-400 uppercase tracking-wider text-[10px] block mb-1">
+              URL / Link (optional)
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. https://github.com/user/repo"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="w-full px-3 py-1.5 bg-[#0B0E11] border border-[#2B2F36] rounded text-xs text-white focus:outline-none focus:border-yellow-500 font-sans"
+            />
           </div>
 
           {/* Content Field */}

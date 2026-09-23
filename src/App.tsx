@@ -11,6 +11,7 @@ import { AskAIChatDrawer } from './components/AskAIChatDrawer';
 import { PerspectiveManager } from './components/PerspectiveManager';
 import { SettingsStatsModal } from './components/SettingsStatsModal';
 import { NewNoteModal } from './components/NewNoteModal';
+import { ProfileModal } from './components/ProfileModal';
 
 export const MainAppContent: React.FC = () => {
   const [viewLayout, setViewLayout] = useState<'split' | 'graph-focus' | 'notes-focus'>('split');
@@ -72,6 +73,7 @@ export const MainAppContent: React.FC = () => {
       <DiscoveryPanel onOpenNewNote={() => setIsNewNoteOpen(true)} />
       <PerspectiveManager />
       <SettingsStatsModal />
+      <ProfileModal />
       <NewNoteModal
         isOpen={isNewNoteOpen}
         onClose={() => setIsNewNoteOpen(false)}

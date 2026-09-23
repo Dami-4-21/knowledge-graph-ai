@@ -701,6 +701,93 @@ Return JSON:
 });
 
 // ---------------------------------------------------------------
+// API Route 7: Extract Learnings (learn-as-you-go)
+// ---------------------------------------------------------------
+app.post('/api/extract-learnings', async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    if (!content) return res.status(400).json({ error: 'Content is required' });
+
+    const cfg = getProvider(req.body);
+    if (!cfg) {
+      return res.json({
+        learnings: [
+          `Key takeaway captured from "${title || 'this work'}".`,
+          `A reusable lesson worth applying to future projects.`
+        ]
+      });
+    }
+
+    const systemPrompt = `You are a Learn-As-You-Go engine. From the user's project/work notes, extract the ATOMIC, reusable lessons they learned — each a single standalone idea they can apply to future work. Return only valid JSON.`;
+    const userMessage = `Work Title: ${title || 'Untitled'}
+Work Content:
+${content}
+
+Extract up to 6 atomic learnings (each one short, self-contained, reusable, one idea only). Return JSON:
+{
+  "learnings": ["Lesson 1 as a standalone statement", "Lesson 2", "..."]
+}`;
+
+    const raw = await callAI(cfg, systemPrompt, userMessage);
+    const parsed = JSON.parse(raw);
+    const learnings = Array.isArray(parsed.learnings)
+      ? parsed.learnings.filter((l: any) => typeof l === 'string' && l.trim()).slice(0, 6)
+      : [];
+    return res.json({ learnings });
+  } catch (error: any) {
+    console.error('Extract Learnings Error:', error.message);
+    return res.status(500).json({ error: error.message || 'Failed to extract learnings.' });
+  }
+});
+
+// ---------------------------------------------------------------
+// API Route 8: Profile Insights (the system learns about YOU)
+// ---------------------------------------------------------------
+app.post('/api/profile-insights', async (req, res) => {
+  try {
+    const { notes, concepts, relationships } = req.body;
+
+    const cfg = getProvider(req.body);
+    if (!cfg) {
+      return res.json({
+        summary: 'Add more notes, projects and learnings and I will build a picture of how you work.',
+        strengths: ['Curious across many domains'],
+        focusAreas: ['Systems & AI'],
+        patterns: ['You capture ideas as you go'],
+        suggestions: ['Turn a saved repo into a tested project to close the learn→build loop']
+      });
+    }
+
+    const systemPrompt = `You are a Personal Insight AI. Analyze the user's knowledge graph and tell them about THEMSELVES — recurring skills/technologies, what they tend to build, their working patterns, and what they should learn next. Be specific and encouraging. Return only valid JSON.`;
+    const userMessage = `User's Notes (title/type/lane): ${JSON.stringify((notes || []).map((n: any) => ({ title: n.title, itemType: n.itemType, lane: n.lane, collection: n.collection })))}
+Concepts: ${JSON.stringify((concepts || []).map((c: any) => c.name).slice(0, 100))}
+Relationships: ${JSON.stringify((relationships || []).map((r: any) => `${r.sourceName} -> ${r.targetName}`).slice(0, 80))}
+
+Return JSON:
+{
+  "summary": "A 2-3 sentence portrait of this person as a builder/learner.",
+  "strengths": ["Concrete strength 1", "Strength 2"],
+  "focusAreas": ["What they spend most time on"],
+  "patterns": ["A working/behavior pattern you noticed"],
+  "suggestions": ["Actionable next step to grow / close the learn-build loop"]
+}`;
+
+    const raw = await callAI(cfg, systemPrompt, userMessage);
+    const parsed = JSON.parse(raw);
+    return res.json({
+      summary: parsed.summary || '',
+      strengths: parsed.strengths || [],
+      focusAreas: parsed.focusAreas || [],
+      patterns: parsed.patterns || [],
+      suggestions: parsed.suggestions || []
+    });
+  } catch (error: any) {
+    console.error('Profile Insights Error:', error.message);
+    return res.status(500).json({ error: error.message || 'Failed to generate profile insights.' });
+  }
+});
+
+// ---------------------------------------------------------------
 // Vite Integration for Dev / Static Files for Prod
 // ---------------------------------------------------------------
 async function startServer() {

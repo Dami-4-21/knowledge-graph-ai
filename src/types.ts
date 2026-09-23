@@ -1,6 +1,13 @@
 export type ProcessingStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
-export type NodeType = 'Concept' | 'Entity' | 'Acronym' | 'Topic' | 'Technology' | 'Note';
+export type NodeType =
+  | 'Concept' | 'Entity' | 'Acronym' | 'Topic' | 'Technology' | 'Note'
+  // Phase 1: hub item types
+  | 'Repo' | 'Screenshot' | 'Project' | 'Client' | 'Domain' | 'DnsRecord'
+  | 'Server' | 'Service' | 'Vision' | 'Learning';
+
+// Phase 1: lanes to separate learning / testing / real client work
+export type Lane = 'learning' | 'testing' | 'client' | 'inbox';
 
 export type RelationshipType = 
   | 'RELATED_TO'
@@ -43,6 +50,8 @@ export interface Note {
   updatedAt: string;
   source?: string;
   sourceUrl?: string;
+  itemType?: NodeType; // Phase 1: what kind of thing this is (Repo, Project, Client, ...)
+  lane?: Lane;         // Phase 1: learning / testing / client / inbox
   tags: string[];
   collection: string;
   processingStatus: ProcessingStatus;

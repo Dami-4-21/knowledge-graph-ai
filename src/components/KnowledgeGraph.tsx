@@ -346,6 +346,17 @@ export const KnowledgeGraph: React.FC = () => {
       case 'Technology': return '#3B82F6'; // Blue
       case 'Topic': return '#A855F7'; // Purple
       case 'Note': return '#64748B'; // Slate
+      // Phase 1: hub item types
+      case 'Repo': return '#22C55E';
+      case 'Project': return '#6366F1';
+      case 'Client': return '#10B981';
+      case 'Domain': return '#F59E0B';
+      case 'DnsRecord': return '#EAB308';
+      case 'Server': return '#EF4444';
+      case 'Service': return '#06B6D4';
+      case 'Vision': return '#A855F7';
+      case 'Screenshot': return '#EC4899';
+      case 'Learning': return '#3B82F6';
       default: return '#EAB308';
     }
   }
@@ -442,6 +453,21 @@ export const KnowledgeGraph: React.FC = () => {
           </span>
           <span className="flex items-center gap-1 text-gray-300">
             <span className="w-2 h-2 rounded-full bg-orange-500" /> Acronym
+          </span>
+          <span className="flex items-center gap-1 text-gray-300">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#6366F1' }} /> Project
+          </span>
+          <span className="flex items-center gap-1 text-gray-300">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#10B981' }} /> Client
+          </span>
+          <span className="flex items-center gap-1 text-gray-300">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#F59E0B' }} /> Domain
+          </span>
+          <span className="flex items-center gap-1 text-gray-300">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#EF4444' }} /> Server
+          </span>
+          <span className="flex items-center gap-1 text-gray-300">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#3B82F6' }} /> Learning
           </span>
         </div>
       </div>

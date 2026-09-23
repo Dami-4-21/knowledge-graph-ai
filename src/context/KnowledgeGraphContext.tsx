@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiFetch, getState, putState, captureTokenFromUrl, getToken, setToken } from '../lib/api';
 import {
   Note,
+  NodeType,
+  Lane,
   Relationship,
   Perspective,
   DiscoveryConnection,
@@ -54,9 +56,13 @@ interface KnowledgeGraphContextType {
   setComparePerspectiveId: (id: string) => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (open: boolean) => void;
-  
+  isProfileOpen: boolean;
+  setIsProfileOpen: (open: boolean) => void;
+
   // Actions
-  addNote: (title: string, content: string, collection?: string, tags?: string[], source?: string) => Promise<Note>;
+  addNote: (title: string, content: string, collection?: string, tags?: string[], source?: string, itemType?: NodeType, lane?: Lane, sourceUrl?: string) => Promise<Note>;
+  extractLearnings: (noteId: string) => Promise<string[]>;
+  getProfileInsights: () => Promise<any>;
   updateNote: (id: string, title: string, content: string, collection?: string, tags?: string[]) => Promise<void>;
   deleteNote: (id: string) => void;
   reAnalyzeNote: (id: string) => Promise<void>;
@@ -165,6 +171,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
   const [isDiscoveryOpen, setIsDiscoveryOpen] = useState<boolean>(false);
   const [isPerspectiveCompareOpen, setIsPerspectiveCompareOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
 
   // AI Provider config — persisted in localStorage
   const [providerConfig, setProviderConfigState] = useState<AIProviderConfig>(() => {
@@ -267,7 +274,10 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
     content: string,
     collection: string = 'General',
     tags: string[] = [],
-    source: string = 'Manual Note'
+    source: string = 'Manual Note',
+    itemType: NodeType = 'Note',
+    lane: Lane = 'inbox',
+    sourceUrl?: string
   ): Promise<Note> => {
     const newNoteId = `note-${Date.now()}`;
     const initialNote: Note = {
@@ -277,6 +287,9 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       source,
+      sourceUrl,
+      itemType,
+      lane,
       tags: tags.length ? tags : ['note'],
       collection,
       processingStatus: 'PROCESSING',
@@ -403,6 +416,57 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
       const remaining = notes.filter(n => n.id !== id);
       setActiveNoteId(remaining.length > 0 ? remaining[0].id : null);
     }
+  };
+
+  // Phase 1: Learn-as-you-go — pull atomic learnings out of a note and save each as a Learning item.
+  const extractLearnings = async (noteId: string): Promise<string[]> => {
+    const sourceNote = notes.find(n => n.id === noteId);
+    if (!sourceNote) return [];
+    try {
+      const res = await apiFetch('/api/extract-learnings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: sourceNote.title, content: sourceNote.content, providerConfig })
+      });
+      if (!res.ok) throw new Error('Failed to extract learnings');
+      const data = await res.json();
+      const learnings: string[] = Array.isArray(data.learnings) ? data.learnings : [];
+      if (learnings.length === 0) return [];
+
+      const learningNotes: Note[] = learnings.map((text, i) => ({
+        id: `note-learn-${Date.now()}-${i}`,
+        title: text.length > 80 ? text.slice(0, 80) + '…' : text,
+        content: text,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        source: `Learned from: ${sourceNote.title}`,
+        itemType: 'Learning',
+        lane: 'learning',
+        tags: ['learning', sourceNote.title],
+        collection: 'Learnings',
+        processingStatus: 'COMPLETED',
+        concepts: [],
+        acronyms: []
+      }));
+
+      setNotes(prev => [...learningNotes, ...prev]);
+      return learnings;
+    } catch (err) {
+      console.error('Extract learnings error:', err);
+      return [];
+    }
+  };
+
+  // Phase 1: the system learns about YOU — a portrait built from your whole graph.
+  const getProfileInsights = async (): Promise<any> => {
+    const allConcepts = notes.flatMap(n => n.concepts);
+    const res = await apiFetch('/api/profile-insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, concepts: allConcepts, relationships, providerConfig })
+    });
+    if (!res.ok) throw new Error('Failed to load profile insights');
+    return res.json();
   };
 
   const reAnalyzeNote = async (id: string) => {
@@ -596,7 +660,11 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
         setComparePerspectiveId,
         isSettingsOpen,
         setIsSettingsOpen,
+        isProfileOpen,
+        setIsProfileOpen,
         addNote,
+        extractLearnings,
+        getProfileInsights,
         updateNote,
         deleteNote,
         reAnalyzeNote,

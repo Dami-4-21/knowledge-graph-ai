@@ -29,6 +29,13 @@ export const TimelineNotes: React.FC<TimelineNotesProps> = ({ onOpenNewNote }) =
 
   const [localSearch, setLocalSearch] = useState('');
 
+  const LANE_STYLES: Record<string, string> = {
+    learning: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+    testing: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    client: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    inbox: 'bg-gray-500/20 text-gray-300 border-gray-500/40',
+  };
+
   // Get unique collections
   const collections = ['ALL', ...Array.from(new Set(notes.map(n => n.collection || 'General')))];
 
@@ -167,6 +174,22 @@ export const TimelineNotes: React.FC<TimelineNotesProps> = ({ onOpenNewNote }) =
                           {timeString}
                         </span>
                       </div>
+
+                      {/* Type + Lane badges (Phase 1) */}
+                      {(note.itemType || note.lane) && (
+                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                          {note.itemType && note.itemType !== 'Note' && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold rounded bg-[#2B2F36] text-gray-200 border border-[#3E434B]">
+                              {note.itemType}
+                            </span>
+                          )}
+                          {note.lane && (
+                            <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold rounded border ${LANE_STYLES[note.lane] || LANE_STYLES.inbox}`}>
+                              {note.lane}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Snippet */}
                       <p className="text-[11px] text-gray-400 mt-1 line-clamp-2 leading-relaxed">

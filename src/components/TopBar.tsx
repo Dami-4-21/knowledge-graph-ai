@@ -13,7 +13,8 @@ import {
   Check,
   Columns2,
   Maximize2,
-  FileText
+  FileText,
+  UserCircle
 } from 'lucide-react';
 import { useKnowledgeGraph } from '../context/KnowledgeGraphContext';
 
@@ -42,6 +43,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     setIsPerspectiveCompareOpen,
     isSettingsOpen,
     setIsSettingsOpen,
+    setIsProfileOpen,
     discoveries,
     createCustomPerspective
   } = useKnowledgeGraph();
@@ -239,6 +241,16 @@ export const TopBar: React.FC<TopBarProps> = ({
         >
           <Sparkles className="w-3.5 h-3.5 text-blue-400" />
           <span className="hidden sm:inline">Ask AI</span>
+        </button>
+
+        {/* About You (Profile Insights) Button */}
+        <button
+          onClick={() => setIsProfileOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-[#2B2F36] hover:bg-[#3E434B] border border-[#2B2F36] text-purple-400 rounded text-xs font-medium transition-colors"
+          title="About You — personal insights from your graph"
+        >
+          <UserCircle className="w-3.5 h-3.5 text-purple-400" />
+          <span className="hidden lg:inline">About You</span>
         </button>
 
         {/* New Note Button */}

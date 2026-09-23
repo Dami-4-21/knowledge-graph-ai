@@ -26,7 +26,8 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ onOpenNewNote }) => {
     activeNoteId,
     updateNote,
     deleteNote,
-    reAnalyzeNote
+    reAnalyzeNote,
+    extractLearnings
   } = useKnowledgeGraph();
 
   const activeNote = notes.find(n => n.id === activeNoteId);
@@ -37,6 +38,9 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ onOpenNewNote }) => {
   const [tagsString, setTagsString] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [learningState, setLearningState] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [learningCount, setLearningCount] = useState(0);
 
   useEffect(() => {
     if (activeNote) {
@@ -85,15 +89,28 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ onOpenNewNote }) => {
   };
 
   const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this note? Extracted concepts will remain in the graph if referenced elsewhere.')) {
-      deleteNote(activeNote.id);
+    // Two-tap in-app confirm (browser confirm() is blocked in many tablet webviews)
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      setTimeout(() => setConfirmingDelete(false), 3000);
+      return;
     }
+    setConfirmingDelete(false);
+    deleteNote(activeNote.id);
   };
 
   const handleReAnalyze = async () => {
     setIsSaving(true);
     await reAnalyzeNote(activeNote.id);
     setIsSaving(false);
+  };
+
+  const handleExtractLearnings = async () => {
+    setLearningState('loading');
+    const learnings = await extractLearnings(activeNote.id);
+    setLearningCount(learnings.length);
+    setLearningState('done');
+    setTimeout(() => setLearningState('idle'), 3000);
   };
 
   return (
@@ -118,6 +135,27 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ onOpenNewNote }) => {
             <span className="hidden sm:inline">Extract AI Concepts</span>
           </button>
 
+          {/* Learn-as-you-go: Extract Learnings Button */}
+          <button
+            onClick={handleExtractLearnings}
+            disabled={learningState === 'loading'}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-[#2B2F36] hover:bg-[#3E434B] text-blue-400 border border-[#3E434B] rounded text-xs font-bold transition-colors disabled:opacity-50 font-mono"
+            title="Extract reusable learnings from this note into your Learning graph"
+          >
+            {learningState === 'loading' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+            )}
+            <span className="hidden sm:inline">
+              {learningState === 'loading'
+                ? 'Learning…'
+                : learningState === 'done'
+                ? `${learningCount} learnings saved`
+                : 'Extract Learnings'}
+            </span>
+          </button>
+
           {/* Save Button */}
           <button
             onClick={handleSave}
@@ -134,13 +172,16 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ onOpenNewNote }) => {
             <span>{isSaving ? 'Extracting...' : hasSaved ? 'Saved' : 'Save'}</span>
           </button>
 
-          {/* Delete Button */}
+          {/* Delete Button (two-tap confirm) */}
           <button
             onClick={handleDelete}
-            className="p-1 text-gray-400 hover:text-rose-400 hover:bg-[#2B2F36] rounded transition-colors"
-            title="Delete Note"
+            className={confirmingDelete
+              ? 'flex items-center gap-1.5 px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-bold transition-colors font-mono'
+              : 'p-1 text-gray-400 hover:text-rose-400 hover:bg-[#2B2F36] rounded transition-colors'}
+            title={confirmingDelete ? 'Tap again to confirm delete' : 'Delete Note'}
           >
             <Trash2 className="w-4 h-4" />
+            {confirmingDelete && <span>Confirm?</span>}
           </button>
         </div>
       </div>
