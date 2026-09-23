@@ -4,6 +4,7 @@ import {
   CheckCircle, XCircle, Loader, Settings, Database, Zap, Globe
 } from 'lucide-react';
 import { useKnowledgeGraph } from '../context/KnowledgeGraphContext';
+import { apiFetch } from '../lib/api';
 import { AIProviderType, AIProviderConfig, AI_PROVIDER_DEFAULTS } from '../types';
 
 type Tab = 'stats' | 'ai';
@@ -91,7 +92,7 @@ export const SettingsStatsModal: React.FC = () => {
     setTestState('loading');
     setTestMessage('');
     try {
-      const res = await fetch('/api/test-connection', {
+      const res = await apiFetch('/api/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerConfig: localCfg })
@@ -120,7 +121,7 @@ export const SettingsStatsModal: React.FC = () => {
     setLoadingModels(true);
     setShowModels(true);
     try {
-      const res = await fetch('/api/openrouter/models');
+      const res = await apiFetch('/api/openrouter/models');
       const data = await res.json();
       setFreeModels(data.free || []);
     } catch {

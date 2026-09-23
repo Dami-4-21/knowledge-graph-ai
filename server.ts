@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
@@ -14,6 +16,55 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 app.use(express.json({ limit: '10mb' }));
+
+// ---------------------------------------------------------------
+// Phase 0: Server-side persistence + secret-link access control
+// ---------------------------------------------------------------
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const APP_ACCESS_TOKEN = (process.env.APP_ACCESS_TOKEN || '').trim();
+
+function ensureDataDir(): void {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* ignore */ }
+}
+
+function readState(): any | null {
+  try {
+    if (!fs.existsSync(STATE_FILE)) return null;
+    const raw = fs.readFileSync(STATE_FILE, 'utf-8');
+    return raw ? JSON.parse(raw) : null;
+  } catch (err: any) {
+    console.error('readState error:', err.message);
+    return null;
+  }
+}
+
+function writeState(state: any): void {
+  ensureDataDir();
+  const tmp = `${STATE_FILE}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(state), 'utf-8');
+  fs.renameSync(tmp, STATE_FILE); // atomic replace
+}
+
+function tokenValid(provided: string): boolean {
+  if (!APP_ACCESS_TOKEN) return true;      // lock disabled when no token configured
+  if (!provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(APP_ACCESS_TOKEN);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Guard every /api route except /api/health. When APP_ACCESS_TOKEN is unset the
+// lock is disabled (fully open). Token via 'x-access-token' header or ?key=.
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (!APP_ACCESS_TOKEN) return next();
+  const provided = (req.header('x-access-token') || (req.query.key as string) || '').trim();
+  if (tokenValid(provided)) return next();
+  return res.status(401).json({ error: 'unauthorized', authRequired: true });
+});
+
+ensureDataDir();
 
 // ---------------------------------------------------------------
 // AI Provider Config type (mirrors src/types.ts)
@@ -194,8 +245,36 @@ app.get('/api/health', (req, res) => {
     provider: process.env.OPENROUTER_API_KEY ? 'openrouter' : (process.env.GEMINI_API_KEY ? 'gemini' : 'none'),
     model: openRouterProvider.model,
     keyConfigured: hasKey,
+    authRequired: !!APP_ACCESS_TOKEN,
     timestamp: new Date().toISOString()
   });
+});
+
+// ---------------------------------------------------------------
+// API Route: Persisted State (server-side storage — the hub's brain)
+// ---------------------------------------------------------------
+app.get('/api/state', (req, res) => {
+  const state = readState();
+  return res.json(state || { empty: true });
+});
+
+app.put('/api/state', (req, res) => {
+  try {
+    const b = req.body || {};
+    const state = {
+      notes: Array.isArray(b.notes) ? b.notes : [],
+      relationships: Array.isArray(b.relationships) ? b.relationships : [],
+      perspectives: Array.isArray(b.perspectives) ? b.perspectives : [],
+      discoveries: Array.isArray(b.discoveries) ? b.discoveries : [],
+      knowledgeGaps: Array.isArray(b.knowledgeGaps) ? b.knowledgeGaps : [],
+      updatedAt: new Date().toISOString(),
+    };
+    writeState(state);
+    return res.json({ ok: true, updatedAt: state.updatedAt });
+  } catch (err: any) {
+    console.error('writeState error:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to save state.' });
+  }
 });
 
 // ---------------------------------------------------------------

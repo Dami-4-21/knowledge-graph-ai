@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch, getState, putState, captureTokenFromUrl, getToken, setToken } from '../lib/api';
 import {
   Note,
   Relationship,
@@ -74,6 +75,39 @@ interface KnowledgeGraphContextType {
 }
 
 const KnowledgeGraphContext = createContext<KnowledgeGraphContextType | undefined>(undefined);
+
+// Phase 0: one-time access gate shown when the server requires a key this device lacks.
+const AccessGate: React.FC = () => {
+  const [val, setVal] = useState('');
+  const submit = () => {
+    let token = val.trim();
+    try {
+      if (token.includes('key=')) {
+        const u = new URL(token);
+        token = u.searchParams.get('key') || token;
+      }
+    } catch { /* treat as raw token */ }
+    if (!token) return;
+    setToken(token);
+    window.location.href = window.location.origin + window.location.pathname;
+  };
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0f17', color: '#e5e7eb', fontFamily: 'system-ui, sans-serif', padding: 24 }}>
+      <div style={{ maxWidth: 420, width: '100%', background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 28 }}>
+        <h1 style={{ fontSize: 20, margin: '0 0 8px' }}>🔒 Private Knowledge Hub</h1>
+        <p style={{ fontSize: 14, color: '#9ca3af', margin: '0 0 20px' }}>Paste your access key (or full access link) to unlock this device. You only need to do this once per device.</p>
+        <input
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="access key or link…"
+          style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 10, border: '1px solid #374151', background: '#0b0f17', color: '#e5e7eb', fontSize: 14, marginBottom: 14 }}
+        />
+        <button onClick={submit} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Unlock</button>
+      </div>
+    </div>
+  );
+};
 
 export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Persistence via localStorage
@@ -159,7 +193,11 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
     }
   ]);
 
-  // Save changes to localStorage
+  // Phase 0: server-sync state
+  const [hydrated, setHydrated] = useState(false);
+  const [locked, setLocked] = useState(false);
+
+  // Save changes to localStorage (offline cache)
   useEffect(() => {
     localStorage.setItem('kg_notes', JSON.stringify(notes));
   }, [notes]);
@@ -179,6 +217,49 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
   useEffect(() => {
     localStorage.setItem('kg_gaps', JSON.stringify(knowledgeGaps));
   }, [knowledgeGaps]);
+
+  // Phase 0: hydrate from server on mount, then keep it synced
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      captureTokenFromUrl();
+      try {
+        const health = await fetch('/api/health').then(r => r.json());
+        if (!cancelled && health?.authRequired && !getToken()) { setLocked(true); return; }
+      } catch { /* offline: fall back to local cache */ }
+
+      try {
+        const state = await getState();
+        if (cancelled) return;
+        if (state && !state.empty && Array.isArray(state.notes)) {
+          setNotes(state.notes);
+          setRelationships(Array.isArray(state.relationships) ? state.relationships : []);
+          if (Array.isArray(state.perspectives) && state.perspectives.length) setPerspectives(state.perspectives);
+          setDiscoveries(Array.isArray(state.discoveries) ? state.discoveries : []);
+          setKnowledgeGaps(Array.isArray(state.knowledgeGaps) ? state.knowledgeGaps : []);
+          setActiveNoteId(state.notes[0]?.id ?? null);
+        } else {
+          // Server empty → migrate whatever this browser already has (local cache or seeds)
+          await putState({ notes, relationships, perspectives, discoveries, knowledgeGaps });
+        }
+      } catch (e: any) {
+        if (!cancelled && e?.status === 401) { setLocked(true); return; }
+        console.error('State hydration failed:', e);
+      }
+      if (!cancelled) setHydrated(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Phase 0: debounced save to server after hydration
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => {
+      putState({ notes, relationships, perspectives, discoveries, knowledgeGaps }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [hydrated, notes, relationships, perspectives, discoveries, knowledgeGaps]);
 
   // Actions
   const addNote = async (
@@ -208,7 +289,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
 
     // Trigger AI extraction
     try {
-      const res = await fetch('/api/extract-knowledge', {
+      const res = await apiFetch('/api/extract-knowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content, providerConfig })
@@ -290,7 +371,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
     }));
 
     try {
-      const res = await fetch('/api/extract-knowledge', {
+      const res = await apiFetch('/api/extract-knowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content, providerConfig })
@@ -332,7 +413,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
 
   const createCustomPerspective = async (prompt: string): Promise<Perspective> => {
     const allConcepts = notes.flatMap(n => n.concepts);
-    const res = await fetch('/api/generate-perspective', {
+    const res = await apiFetch('/api/generate-perspective', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, concepts: allConcepts, providerConfig })
@@ -391,7 +472,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
     const allConcepts = notes.flatMap(n => n.concepts);
 
     try {
-      const res = await fetch('/api/ask-ai', {
+      const res = await apiFetch('/api/ask-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -432,7 +513,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
 
   const generateLearningPath = async (domain: string): Promise<LearningPath> => {
     const allConcepts = notes.flatMap(n => n.concepts).map(c => c.name);
-    const res = await fetch('/api/generate-learning-path', {
+    const res = await apiFetch('/api/generate-learning-path', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targetDomain: domain, currentConcepts: allConcepts, providerConfig })
@@ -448,7 +529,7 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
   const triggerDiscoveryScan = async () => {
     const allConcepts = notes.flatMap(n => n.concepts);
     try {
-      const res = await fetch('/api/discover-connections', {
+      const res = await apiFetch('/api/discover-connections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes, concepts: allConcepts, relationships, providerConfig })
@@ -481,6 +562,8 @@ export const KnowledgeGraphProvider: React.FC<{ children: React.ReactNode }> = (
     setDiscoveries(INITIAL_DISCOVERIES);
     setKnowledgeGaps(INITIAL_KNOWLEDGE_GAPS);
   };
+
+  if (locked) return <AccessGate />;
 
   return (
     <KnowledgeGraphContext.Provider
